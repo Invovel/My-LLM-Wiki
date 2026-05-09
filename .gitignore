@@ -1,16 +1,61 @@
-# macOS
-.DS_Store
-
-# Obsidian (keep config, ignore personal data)
-.obsidian/workspace.json
-.obsidian/workspace-mobile.json
-.obsidian/cache
-.obsidian/*.bak
-.obsidian/plugins/*/data.json
-
-# Node.js
+# ── 依赖与构建产物 ──
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
 node_modules/
 
-# Temporary
-*.tmp
-*.bak
+# ── 环境变量与密钥 ──
+.env
+*.pem
+*_credentials.json
+
+# ── Obsidian 工作区（个人配置） ──
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/hotkeys.json
+.obsidian/app.json
+.obsidian/appearance.json
+.obsidian/community-plugins.json
+.obsidian/core-plugins.json
+.obsidian/graph.json
+
+# ── Obsidian 插件（二进制 / 第三方） ──
+.obsidian/plugins/calendar/
+.obsidian/plugins/copilot/
+.obsidian/plugins/darlal-switcher-plus/
+.obsidian/plugins/mcp-tools/
+.obsidian/plugins/obsidian-dify-sync/
+.obsidian/plugins/obsidian-excalidraw-plugin/
+.obsidian/plugins/obsidian-git/
+.obsidian/plugins/obsidian-local-rest-api/
+.obsidian/plugins/obsidian42-strange-new-worlds/
+.obsidian/plugins/omnisearch/
+.obsidian/plugins/pdf-plus/
+.obsidian/plugins/tag-wrangler/
+.obsidian/plugins/templater-obsidian/
+.obsidian/plugins/claudian/
+
+# ── 个人内容（不发布到公开仓库） ──
+wiki/
+System/
+raw/
+assets/
+Excalidraw/
+dify_workflows/
+n8n_workflows/
+.claudian/
+
+# ── 生成文件 ──
+historyContentHash
+.llm-wiki/sync_state.json
+.llm-wiki/index.json
+System/
+
+# ── 系统文件 ──
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~

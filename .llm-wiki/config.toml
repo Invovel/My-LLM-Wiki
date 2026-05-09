@@ -1,0 +1,6 @@
+[vault]
+name = "My Wiki"
+language = "en"
+
+# [db9]
+# url = "your-db9-connection-string"

@@ -22,4 +22,4 @@ media:
 
 ## 相关
 
-- [[Wiki 目录]]
+- [[index|Wiki 目录]]

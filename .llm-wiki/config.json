@@ -1,0 +1,19 @@
+{
+  "ollama": {
+    "base_url": "http://localhost:11434",
+    "models": {
+      "keyword_extraction": "Qwen3.5:4b",
+      "entity_recognition": "Qwen3.5:4b",
+      "hyde_enhancement": "gemma4:e2b",
+      "hotword_maintenance": "Qwen3.5:4b"
+    },
+    "timeout": 30,
+    "max_retries": 3
+  },
+  "preprocessing": {
+    "max_keywords": 15,
+    "max_entities": 20,
+    "enable_hyde": true,
+    "enable_desensitization": true
+  }
+}
