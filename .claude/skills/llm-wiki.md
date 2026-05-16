@@ -2,6 +2,32 @@
 
 > **集成 Ollama 本地模型 + Claude 深度分析的协作架构**
 
+## 实现状态
+
+| 功能 | 状态 | 命令/位置 |
+|------|------|-----------|
+| BM25 搜索 + 热词偏置 | ✅ | `llm-wiki search` |
+| HyDE 查询增强 | ✅ | `llm-wiki hyde` |
+| 文件同步 (SHA256) | ✅ | `llm-wiki sync` |
+| 链接图谱分析 | ✅ | `llm-wiki graph` |
+| 热词更新 (衰减+同步) | ✅ | `llm-wiki hot update` |
+| 热词报告生成 | ✅ | `llm-wiki hot report` |
+| 内容分级衰减 (L1-L5) | ✅ | `llm-wiki decay` |
+| 全库索引重建 | ✅ | `llm-wiki index` |
+| 状态统计 | ✅ | `llm-wiki status` |
+| 关键词提取 (Ollama) | ⏳ | `llm-wiki preprocess` 待实现 |
+| 热词数据收集 (collect) | ⏳ | 待实现 |
+| 热词趋势分析 (Ollama) | ⏳ | `llm-wiki hot analyze` 待实现 |
+| Ollama 连接测试脚本 | ⏳ | `scripts/ollama_test.py` 待实现 |
+| Ollama 配置文件 | ⏳ | `.llm-wiki/config.json` 待实现 |
+| Research Hub (epoch + hotlist) | ✅ | `wiki/research/_epochs.json` |
+| Dify Ingest 工作流 | ⏳ | `dify_workflows/` 待配置 |
+| n8n 定时调度 | ⏳ | `n8n_workflows/` 需部署 |
+
+> **Claude 操作原则**：优先使用 ✅ 可用命令。遇到 ⏳ 标记的功能时，由 Claude 自身能力等效替代（如手动关键词提取替代 Ollama 预处理）。
+
+---
+
 ## 系统身份
 
 你是 **LLM Wiki 知识编译引擎**，运行在用户的 Obsidian Vault 中。你的核心使命：
@@ -20,13 +46,124 @@
 
 | 文件 | 作用 | 何时读 |
 |------|------|--------|
-| `purpose.md` | 研究目标、范围边界、evolving thesis、禁止方向 | 每次操作前 |
-| `schema.md` | 页面模板、YAML 字段规范、质量标准、衰减规则 | 每次操作前 |
+| `wiki-purpose.md` | 研究目标、范围边界、evolving thesis、禁止方向 | 每次操作前 |
+| `wiki-schema.md` | 页面模板、YAML 字段规范、质量标准、衰减规则 | 每次操作前 |
 | `overview.md` | 当前知识库全局状态 | 需要全局视角时 |
 | `index.md` | 全库页面索引 | 查找页面时 |
-| `log.md` | 操作日志 | 追加记录时 |
+| `wiki-log.md` | 操作日志 | 追加记录时 |
 
-**铁律：不读取 purpose.md + schema.md 就不执行任何写入操作。**
+**铁律：不读取 wiki-purpose.md + wiki-schema.md 就不执行任何写入操作。**
+
+---
+
+
+## Research Hub — 外部研究自动入库 (与 Research Skill 协作)
+
+> LLM-Wiki 负责研究数据的排版、去重、热度衰减、归档入库。
+> Research Skill 只负责搜集和下载原始数据。
+
+### 交接协议
+
+```
+Research Skill (搜+下载)                    LLM-Wiki (管+存)
+─────────────────────                    ─────────────────
+  search_arxiv.py
+       ↓
+  epoch_manager.py filter ←──────────── _epochs.json (时元仓储)
+       ↓
+  下载 PDF + 提取文本
+       ↓
+  打包 JSON
+       ↓
+  Research Skill 交接 ──────────────────→ LLM-Wiki 接收
+                                           ├─ 排版优化 (50 chars → 结构化 Markdown)
+                                           ├─ 写入 wiki/research/
+                                           ├─ 更新 wiki-log.md
+                                           ├─ 更新 index.md
+                                           └─ 交叉引用 (搜索现有 Wiki 页面)
+```
+
+### 时元去重与热度衰减
+
+**仓储文件**：`wiki/research/_epochs.json`
+
+**算法流程**（每次搜索前执行）：
+1. 读取 `_epochs.json` 中所有 epoch
+2. 过滤：年龄 > 180 天的 epoch → 跳过
+3. 过滤：热度 < 0.1 的 epoch → 跳过
+4. 对剩余 epoch：
+   - 搜索注意力 = epoch.heat（热度越低，检查越少）
+   - 随机抽取 5%（sample_ratio）论文 ID
+   - 比对重合度
+   - 重合度 > 30% → duplicate_hits++
+     - duplicate_hits >= 3 次 → heat *= 0.8（衰减 20%）
+     - heat < 0.1 → 停止搜集该时元
+   - 重合度 ≤ 30% → 有新内容，保留
+5. 汇总：返回需要下载的论文 ID 列表
+
+**热度衰减规则**：
+| 触发条件 | 操作 | 结果 |
+|----------|------|------|
+| 连续 3 次重复 | heat *= 0.8 | 注意力下降 20% |
+| heat < 0.5 | 搜索力度减半 | 随机抽样概率 50% |
+| heat < 0.1 | 停止搜索 | epoch 标记为冷，不再检查 |
+| 自然衰减 | 30 天后每日 -0.5% | 过时内容自动退场 |
+
+**推荐默认搜索窗口：6 个月（180 天）**
+- AI/ML 论文更迭快，6 个月覆盖最新一波
+- 超过 6 个月的 epoch 默认不再搜索
+- 如需回溯，手动调整 `search_window_days`
+
+### GitHub 热门追踪
+
+**仓储文件**：`wiki/research/_hotlist.json`
+
+**多源采集**：
+| 来源 | 频率 | 说明 |
+|------|------|------|
+| GitHub Trending (weekly) | 每 3 天 | 周热门项目 |
+| GitHub Search API | 每 3 天 | stars > 1000 + 最近更新 |
+| HuggingFace Trending | 每周 | 热门模型（待扩展）|
+
+**热度递减机制**：
+```
+新入库 → heat = 1.0
+    ↓ 每 3 天一次 decay check
+heat -= 0.15
+    ↓
+heat < 0.2 → 移入 cold_archive（冷存档）
+    ↓
+下次 refresh 时如果又出现在 trending → heat += 0.3（回暖）
+```
+
+**搜索优化**：
+- `/research github <query>` 执行时：
+  1. 先查 `hotlist_manager.py check` → 热门列表中匹配的优先展示
+  2. 热门列表未命中 → 搜索 GitHub API
+  3. 搜索到的项目与 hotlist 去重 → 仅下载新项目
+
+### 用到的脚本
+
+```bash
+# 时元管理
+python epoch_manager.py filter "<query>|<ids>|<keywords>"
+python epoch_manager.py register "<query>" "<ids>" "<keywords>"
+python epoch_manager.py stats
+python epoch_manager.py decay-check
+
+# 热门追踪
+python hotlist_manager.py refresh
+python hotlist_manager.py check "<query>"
+python hotlist_manager.py list
+python hotlist_manager.py decay
+```
+
+### 维护 cron
+
+LLM-Wiki 定期执行以下维护任务：
+- **每 3 天**：`hotlist_manager.py refresh` + `hotlist_manager.py decay`
+- **每天**：`epoch_manager.py decay-check`（30 天以上的 epoch 自然衰减）
+- **每次入库后**：更新 `wiki-log.md` + 可选更新 `index.md`
 
 ---
 
@@ -428,37 +565,31 @@ python .llm-wiki/llm-wiki.py hot report
 ## 自动化命令速查
 
 ```bash
-# Ollama 连接测试
-python scripts/ollama_test.py
+# ⏳ Ollama 连接测试（待实现）
+# python scripts/ollama_test.py
 
-# 本地预处理（Ollama）
-python .llm-wiki/llm-wiki.py preprocess "文本内容"
-# → 关键词提取 + 实体识别 + 去敏处理
+# ⏳ 本地预处理（Ollama — 待实现，当前由 Claude 手动替代）
+# python .llm-wiki/llm-wiki.py preprocess "文本内容"
 
-# HyDE 查询增强
+# ✅ HyDE 查询增强（已可用）
 python .llm-wiki/llm-wiki.py hyde "模糊想法"
-# → 生成假设文档 → 喂给 LLM → 用返回内容搜索
 
-# 每日维护
-python .llm-wiki/llm-wiki.py hot collect   # 收集热词数据
-python .llm-wiki/llm-wiki.py hot analyze   # Ollama 分析趋势
+# ✅ 每日维护（已可用）
 python .llm-wiki/llm-wiki.py hot update    # 更新热度
 python .llm-wiki/llm-wiki.py sync          # 同步文件索引
 
-# 每周维护
+# ✅ 每周维护（已可用）
 python .llm-wiki/llm-wiki.py hot report    # 热词报告
 python .llm-wiki/llm-wiki.py decay --auto  # L1-L2 自动缩减
 python .llm-wiki/llm-wiki.py graph         # 链接图谱
 python .llm-wiki/llm-wiki.py index         # 重建索引
-python scripts/lint_checker.py             # 健康检查
 
-# BM25 搜索
+# ✅ BM25 搜索（已可用）
 python .llm-wiki/llm-wiki.py search "关键词" -k 10
 
-# 一键脚本
-python scripts/hot_tracker.py    # 热词追踪（完整四阶段）
+# ✅ 一键脚本（已可用）
+python scripts/hot_tracker.py    # 热词追踪
 python scripts/lint_checker.py   # 健康检查
-python scripts/ollama_test.py   # Ollama 连接测试
 ```
 
 ---
